@@ -5,9 +5,7 @@ import org.bson.types.ObjectId;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
-import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
 import org.telegram.telegrambots.meta.api.objects.*;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardRemove;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardButton;
@@ -29,8 +27,7 @@ public class Bot extends TelegramLongPollingBot {
             long chatId = update.getCallbackQuery().getFrom().getId();
             CallbackQuery callbackQuery = update.getCallbackQuery();
             String scenario_ind = callbackQuery.getData();
-            System.out.println(scenario_ind);
-            long id = send(Scenario.distributor(scenario_ind, chatId, ""));
+            long id = send(Scenario.distributor(scenario_ind, chatId, "", "-"));
             Scenario.setTemporaryMessage(chatId, id);
         } else {
             try (MongoClient mongoClient = MongoClients.create()) {
@@ -51,7 +48,6 @@ public class Bot extends TelegramLongPollingBot {
 
 
                     if (user_reg != null) {
-                        //String name = contact.getFirstName() + (contact.getLastName() != null ? " " + contact.getLastName() : "");
 
                         users.updateOne(new Document("phone", user_reg.get("phone")),
                                 new Document("$set", new Document("chat_id", contact.getUserID())));
@@ -60,22 +56,29 @@ public class Bot extends TelegramLongPollingBot {
                                 new Document("$set", new Document("scenario", "0.0")));
 
                         StringBuilder sb = new StringBuilder(constants.REGISTRATION_PERFORMED);
-                        sb.replace(sb.indexOf("1"), sb.indexOf("1") + 1, "<b>" + Scenario.getRole(user_reg.getInteger("role")) + "</b>");
-                        sb.replace(sb.indexOf("2"), sb.indexOf("2") + 1, "<b>" + user_reg.getString("work_name") + "</b>");
+                        sb.replace(sb.indexOf("1"), sb.indexOf("1") + 1, "<b>"
+                                + Scenario.getRole(user_reg.getInteger("role")) + "</b>");
+                        sb.replace(sb.indexOf("2"), sb.indexOf("2") + 1, "<b>"
+                                + user_reg.getString("work_name") + "</b>");
                         sendMessage.setText(sb.toString());
                         sendMessage.setParseMode("html");
                         send(sendMessage);
+                        long id = send(Scenario.distributor("0.1",
+                                message.getChatId(), "", "меню"));
+                        Scenario.setTemporaryMessage(message.getChatId(), id);
                     } else {
 
                         sendMessage.setText(constants.REGISTRATION_ID_NOT_FOUND);
                         send(sendMessage);
                     }
                 } else {
-                    if (message.getText().charAt(0) == '/') {
+                    if (message.getText() == null) {
+                        //todo
+                    } else if (message.getText().charAt(0) == '/') {
                         sendMessage = new SendMessage().setChatId(message.getChatId());
                         String command = message.getText().substring(1);
                         if (command.contains("sign_up") || documents.first() == null) {
-                            if(command.contains("user-add-admin")){
+                            if (command.contains("user-add-admin")) {
                                 Map<String, Object> map = new HashMap<>();
                                 map.put("_id", new ObjectId());
                                 map.put("role", 0);
@@ -84,41 +87,44 @@ public class Bot extends TelegramLongPollingBot {
                                 users.insertOne(new Document(map));
                                 return;
                             }
-                            sendMessage.setText(constants.REGISTRATION_INQUIRY);
-
-                            sendMessage.setReplyMarkup(createRegistrationButton());
-
-                            send(sendMessage);
+                            send(Scenario.distributor("sign_up.0",
+                                    message.getChatId(), "", ""));
                         } else {
                             Document user = (Document) documents.first();
+                            assert user != null;
                             String scenario = (String) user.get("scenario");
-                            boolean isCancel = false;
-                            if (command.contains("cancel") || !scenario.equals("0.0")) {
-                                send(Scenario.distributor(scenario.substring(0, scenario.indexOf('.') + 1) + "cancel", message.getChatId(), ""));
-                                isCancel = true;
-                            }
-                            switch (command) {
-                                case "menu":
-                                case "start":
-                                    long id = send(Scenario.distributor("0." + (isCancel ? "1" : "0"), message.getChatId(), ""));
-                                    Scenario.setTemporaryMessage(message.getChatId(), id);
-                                    break;
-                                default:
-                                    sendMessage.setText(constants.ERROR_COMMAND);
-                                    send(sendMessage);
-                            }
+                            if (command.contains("cancel") ||
+                                    !scenario.substring(0, scenario.indexOf('.')).equals("0")) {
+                                long id = send(Scenario.distributor(scenario.substring(0, scenario.indexOf('.') + 1)
+                                        + "cancel", message.getChatId(), "", "меню"));
+                                Scenario.setTemporaryMessage(message.getChatId(), id);
+                            } else
+                                switch (command) {
+                                    case "cancel":
+                                    case "menu":
+                                    case "start":
+                                        long id = send(Scenario.distributor("0.1",
+                                                message.getChatId(), "", "меню"));
+                                        Scenario.setTemporaryMessage(message.getChatId(), id);
+                                        break;
+                                    default:
+                                        sendMessage.setText(constants.ERROR_COMMAND);
+                                        send(sendMessage);
+                                }
                         }
                     } else {
                         if (documents.first() == null) {
-                            sendMessage.setText(constants.REGISTRATION_INQUIRY);
-
-                            sendMessage.setReplyMarkup(createRegistrationButton());
-
-                            send(sendMessage);
+                            send(Scenario.distributor("sign_up.0",
+                                    message.getChatId(), "", ""));
                         } else {
                             Document user = (Document) documents.first();
                             String scenario = (String) user.get("scenario");
-                            send(Scenario.distributor(scenario, message.getChatId(), message.getText()));
+                            String mes = message.getText();
+                            if (scenario.equals("2.2") && !mes.equals(constants.BUTTON_OK)) {
+                                scenario = "2.cancel";
+                            }
+                            long id = send(Scenario.distributor(scenario, message.getChatId(), mes, "меню"));
+                            Scenario.setTemporaryMessage(message.getChatId(), id);
                         }
                     }
                 }
@@ -127,35 +133,31 @@ public class Bot extends TelegramLongPollingBot {
 
     }
 
-    static ReplyKeyboardMarkup createRegistrationButton() {
-        ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
-        replyKeyboardMarkup.setSelective(true);
-        replyKeyboardMarkup.setResizeKeyboard(true);
-        replyKeyboardMarkup.setOneTimeKeyboard(true);
-        List<KeyboardRow> keyboard = new ArrayList<>();
-        KeyboardRow keyboardRow = new KeyboardRow();
-        KeyboardButton regButton = new KeyboardButton();
-        regButton.setText(constants.REGISTRATION_BUTTON).setRequestContact(true);
-        keyboardRow.add(regButton);
-        keyboard.add(keyboardRow);
-        replyKeyboardMarkup.setKeyboard(keyboard);
-        return replyKeyboardMarkup;
-    }
-
-    long send(Object[] sendMessage) {
+    private long send(Object[] sendMessage) {
         System.out.println(sendMessage[1] != null);
         long id = 0;
         try {
             if (sendMessage[1] != null)
                 execute((DeleteMessage) sendMessage[1]);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
+        try {
             if (sendMessage[0] != null)
                 id = execute((SendMessage) sendMessage[0]).getMessageId();
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
+        try {
+            if (sendMessage[2] != null)
+                id = execute((SendMessage) sendMessage[2]).getMessageId();
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
         return id;
     }
-    void send(SendMessage sendMessage) {
+
+    private void send(SendMessage sendMessage) {
         try {
             execute(sendMessage);
         } catch (TelegramApiException e) {

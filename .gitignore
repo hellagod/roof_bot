@@ -1,5 +1,7 @@
 
 target/
 .idea/
+log.0.0.txt
+log.0.0.txt.lck
 
 src/test/
